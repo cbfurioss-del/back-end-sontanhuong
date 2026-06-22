@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum ProductVariantStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+enum Capacity {
+  L1
+  L5
+  L18
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKING
+  SHIPPING
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  VNPAY
+  MOMO
+  BANK_TRANSFER
+}
+
+enum TransactionType {
+  IMPORT
+  EXPORT
+  ADJUSTMENT
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum CouponStatus {
+  ACTIVE
+  EXPIRED
+  DISABLED
+}
+
+enum ReportType {
+  REVENUE
+  TOP_PRODUCTS
+  TOP_CUSTOMERS
+  MONTHLY_STATISTICS
+}
+
+/// Người dùng hệ thống với quyền ADMIN hoặc CUSTOMER.
+model User {
+  id               String           @id @default(uuid())
+  email            String           @unique
+  password         String
+  fullName         String?
+  phone            String?
+  role             Role             @default(CUSTOMER)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+  addresses        Address[]
+  refreshTokens    RefreshToken[]
+  orders           Order[]
+  cart             Cart?
+  reviews          Review[]
+  favoriteProducts FavoriteProduct[]
+
+  @@index([email], map: "idx_user_email")
+  @@index([createdAt], map: "idx_user_created_at")
+}
+
+/// Địa chỉ giao hàng của khách hàng.
+model Address {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String
+  isDefault  Boolean  @default(false)
+  orders     Order[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  @@index([userId], map: "idx_address_user_id")
+}
+
+/// Refresh token dùng cho authentication.
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  token      String
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId], map: "idx_refresh_token_user_id")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([name], map: "uq_category_name")
+  @@index([createdAt], map: "idx_category_created_at")
+}
+
+model Brand {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([name], map: "uq_brand_name")
+  @@index([createdAt], map: "idx_brand_created_at")
+}
+
+model Color {
+  id         String           @id @default(uuid())
+  name       String
+  code       String           @unique
+  hexValue   String
+  variants   ProductVariant[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
+
+  @@index([createdAt], map: "idx_color_created_at")
+}
+
+/// Sản phẩm chính của cửa hàng.
+model Product {
+  id            String            @id @default(uuid())
+  category      Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categoryId    String
+  brand         Brand             @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  brandId       String
+  name          String
+  slug          String            @unique
+  description   String?
+  metadata      Json?
+  status        ProductStatus     @default(ACTIVE)
+  images        ProductImage[]
+  variants      ProductVariant[]
+  reviews       Review[]
+  favoriteItems FavoriteProduct[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+
+  @@index([name], map: "idx_product_name")
+  @@index([categoryId], map: "idx_product_category_id")
+  @@index([brandId], map: "idx_product_brand_id")
+  @@index([status], map: "idx_product_status")
+  @@index([createdAt], map: "idx_product_created_at")
+}
+
+model ProductImage {
+  id         String   @id @default(uuid())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  url        String
+  altText    String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  @@index([productId], map: "idx_product_image_product_id")
+}
+
+model ProductVariant {
+  id              String                 @id @default(uuid())
+  product         Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId       String
+  color           Color                  @relation(fields: [colorId], references: [id], onDelete: Restrict)
+  colorId         String
+  sku             String                 @unique
+  capacity        Capacity
+  price           Decimal                @db.Decimal(18, 2)
+  stockQuantity   Int                    @default(0)
+  status          ProductVariantStatus   @default(AVAILABLE)
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  inventoryEvents InventoryTransaction[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  deletedAt       DateTime?
+
+  @@index([sku], map: "idx_product_variant_sku")
+  @@index([productId], map: "idx_product_variant_product_id")
+  @@index([status], map: "idx_product_variant_status")
+  @@index([createdAt], map: "idx_product_variant_created_at")
+}
+
+model FavoriteProduct {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, productId], map: "uq_favorite_user_product")
+  @@index([productId], map: "idx_favorite_product_id")
+}
+
+model Cart {
+  id         String     @id @default(uuid())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String     @unique
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+}
+
+model CartItem {
+  id               String         @id @default(uuid())
+  cart             Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartId           String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  productVariantId String
+  quantity         Int            @default(1)
+  unitPrice        Decimal        @db.Decimal(18, 2)
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  @@index([cartId], map: "idx_cart_item_cart_id")
+  @@index([productVariantId], map: "idx_cart_item_variant_id")
+}
+
+model Order {
+  id             String         @id @default(uuid())
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  address        Address?       @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  addressId      String?
+  coupon         Coupon?        @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponId       String?
+  status         OrderStatus    @default(PENDING)
+  paymentStatus  PaymentStatus  @default(UNPAID)
+  paymentMethod  PaymentMethod
+  totalAmount    Decimal        @db.Decimal(18, 2)
+  discountAmount Decimal        @db.Decimal(18, 2) @default(0)
+  shippingFee    Decimal        @db.Decimal(18, 2) @default(0)
+  notes          String?
+  metadata       Json?
+  items          OrderItem[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  @@index([status], map: "idx_order_status")
+  @@index([paymentStatus], map: "idx_order_payment_status")
+  @@index([createdAt], map: "idx_order_created_at")
+}
+
+model OrderItem {
+  id               String         @id @default(uuid())
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  productVariantId String
+  quantity         Int            @default(1)
+  unitPrice        Decimal        @db.Decimal(18, 2)
+  subtotal         Decimal        @db.Decimal(18, 2)
+  productName      String
+  colorName        String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  @@index([orderId], map: "idx_order_item_order_id")
+  @@index([productVariantId], map: "idx_order_item_variant_id")
+}
+
+model InventoryTransaction {
+  id               String           @id @default(uuid())
+  productVariant   ProductVariant   @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  productVariantId String
+  transactionType  TransactionType
+  quantity         Int
+  reference        String?
+  notes            String?
+  metadata         Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  @@index([productVariantId], map: "idx_inventory_transaction_variant_id")
+  @@index([transactionType], map: "idx_inventory_transaction_type")
+  @@index([createdAt], map: "idx_inventory_transaction_created_at")
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId   String
+  rating      Int
+  title       String?
+  content     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([userId, productId], map: "uq_review_user_product")
+  @@index([productId], map: "idx_review_product_id")
+  @@index([userId], map: "idx_review_user_id")
+  @@index([createdAt], map: "idx_review_created_at")
+}
+
+/// Coupon giảm giá dùng cho đơn hàng.
+model Coupon {
+  id             String        @id @default(uuid())
+  code           String        @unique
+  discountType   DiscountType
+  discountValue  Decimal       @db.Decimal(18, 2)
+  minOrderAmount Decimal       @db.Decimal(18, 2) @default(0)
+  maxDiscount    Decimal       @db.Decimal(18, 2) @default(0)
+  startDate      DateTime
+  endDate        DateTime
+  usageLimit     Int?
+  usedCount      Int           @default(0)
+  status         CouponStatus  @default(ACTIVE)
+  orders         Order[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([status], map: "idx_coupon_status")
+  @@index([startDate], map: "idx_coupon_start_date")
+  @@index([endDate], map: "idx_coupon_end_date")
+}
+
+/// Lưu trữ dữ liệu báo cáo để thống kê doanh thu và khách hàng.
+model ReportSnapshot {
+  id          String      @id @default(uuid())
+  reportType  ReportType
+  snapshotAt  DateTime
+  revenue     Decimal?    @db.Decimal(18, 2)
+  metrics     Json
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  @@index([snapshotAt], map: "idx_report_snapshot_at")
+  @@index([reportType], map: "idx_report_type")
+}
